@@ -5,24 +5,15 @@ from supabase import create_client
 
 load_dotenv()
 
-# -----------------------------
-# Spotify credentials
-# -----------------------------
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
-# -----------------------------
-# Supabase credentials
-# -----------------------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# -----------------------------
-# Get Spotify access token
-# -----------------------------
 def get_spotify_token():
     response = requests.post(
         "https://accounts.spotify.com/api/token",
@@ -34,10 +25,7 @@ def get_spotify_token():
     return response.json()["access_token"]
 
 
-# -----------------------------
-# Search Spotify for a song
-# -----------------------------
-def find_spotify_url(title, artist, token):
+def find_spotify_info(title, artist, token):
     headers = {
         "Authorization": f"Bearer {token}"
     }
@@ -59,14 +47,20 @@ def find_spotify_url(title, artist, token):
     tracks = response.json()["tracks"]["items"]
 
     if not tracks:
-        return None
+        return None, None
 
-    return tracks[0]["external_urls"]["spotify"]
+    track = tracks[0]
+
+    spotify_url = track["external_urls"]["spotify"]
+
+    cover_url = None
+
+    if track.get("album") and track["album"].get("images"):
+        cover_url = track["album"]["images"][0]["url"]
+
+    return spotify_url, cover_url
 
 
-# -----------------------------
-# Main
-# -----------------------------
 print("Getting Spotify access token...")
 
 token = get_spotify_token()
@@ -76,29 +70,44 @@ print("Spotify connected!")
 songs = (
     supabase
     .table("songs")
-    .select("id,title,artist,spotify_url")
-    .is_("spotify_url", "null")
+    .select("id,title,artist,spotify_url,cover_url")
     .execute()
 )
 
-print(f"Songs without Spotify URLs: {len(songs.data)}")
+print(f"Total songs: {len(songs.data)}")
 
 for song in songs.data:
 
     title = song["title"]
     artist = song["artist"]
 
+    # Only process songs that are missing either URL
+    # or cover art.
+    if song.get("spotify_url") and song.get("cover_url"):
+        continue
+
     print(f"\nSearching: {title} — {artist}")
 
     try:
-        spotify_url = find_spotify_url(title, artist, token)
+        spotify_url, cover_url = find_spotify_info(
+            title,
+            artist,
+            token
+        )
 
         if spotify_url:
+
+            update_data = {
+                "spotify_url": spotify_url,
+                "cover_url": cover_url
+            }
+
             supabase.table("songs").update(
-                {"spotify_url": spotify_url}
+                update_data
             ).eq("id", song["id"]).execute()
 
-            print("FOUND:", spotify_url)
+            print("FOUND Spotify URL")
+            print("FOUND Cover URL")
 
         else:
             print("NOT FOUND")
