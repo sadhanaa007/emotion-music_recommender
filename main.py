@@ -1,9 +1,13 @@
 import tkinter as tk
 import random
 import cv2
+import os
+import webbrowser
 
 from PIL import Image, ImageTk
 from deepface import DeepFace
+from dotenv import load_dotenv
+from supabase import create_client
 
 
 # ============================================================
@@ -67,6 +71,38 @@ BODY_FONT = (BODY_FACE, 15)
 BUTTON_FONT = (BODY_FACE, 13, "bold")
 SMALL_FONT = (BODY_FACE, 10)
 ACCENT_FONT = (ACCENT_FACE, 11)
+
+
+# ============================================================
+# SUPABASE
+# ============================================================
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
+
+
+def get_songs_by_vibe(vibe):
+    response = (
+        supabase
+        .table("songs")
+        .select("*")
+        .eq("vibe", vibe.lower())
+        .execute()
+    )
+
+    return response.data
+
+
+def open_spotify(url):
+    if url:
+        webbrowser.open(url)
 
 
 # ============================================================
@@ -295,7 +331,6 @@ def make_brand(parent):
 
 make_brand(home_frame)
 
-
 home_kicker = tk.Label(
     home_frame,
     text="your playlist called. it wants better material.",
@@ -414,7 +449,6 @@ rotate_home_message()
 # ============================================================
 
 def button_enter(event):
-
     event.widget.configure(
         bg=PURPLE_LIGHT,
         fg=BG
@@ -422,7 +456,6 @@ def button_enter(event):
 
 
 def button_leave(event):
-
     event.widget.configure(
         bg=PURPLE,
         fg=WHITE
@@ -487,7 +520,6 @@ home_note.pack(
 # ============================================================
 
 make_brand(camera_frame)
-
 
 camera_kicker = tk.Label(
     camera_frame,
@@ -728,7 +760,6 @@ def cancel_camera():
 
 make_brand(vibe_frame)
 
-
 emotion_kicker = tk.Label(
     vibe_frame,
     text="apparently, your face has lore.",
@@ -903,6 +934,49 @@ vibe_options = {
 
 
 # ============================================================
+# VIBE MAP
+# ============================================================
+# The user sees the phrases above.
+# This converts each phrase into the category stored in Supabase.
+
+VIBE_MAP = {
+
+    "make me feel better": "comfort",
+    "romanticise the situation": "romantic",
+    "stare out the window": "calm",
+    "leave me alone, but with music": "calm",
+
+    "match my energy": "angry_energy",
+    "calm me down": "calm",
+    "main character mode": "main_character",
+    "let me scream musically": "angry_energy",
+
+    "keep this going": "happy",
+    "make me dance": "dance",
+    "throwbacks": "throwback",
+
+    "wake me up": "energy",
+    "cozy mode": "cozy",
+    "late-night brain": "late_night",
+
+    "something soft": "soft",
+    "comfort zone": "comfort",
+    "distract me": "distraction",
+
+    "give me chaos": "chaos",
+    "hype me up": "hype",
+    "something unexpected": "surprise",
+
+    "cleanse my ears": "fresh",
+    "something comforting": "comfort",
+    "give me energy": "energy",
+    "change the mood": "mood_change",
+
+    "surprise me": "surprise"
+}
+
+
+# ============================================================
 # VIBE BUTTON
 # ============================================================
 
@@ -938,14 +1012,12 @@ def choose_vibe_button(parent, text, index):
     )
 
     def enter(event):
-
         event.widget.configure(
             bg=PURPLE,
             fg=WHITE
         )
 
     def leave(event):
-
         event.widget.configure(
             bg=normal_colour,
             fg=WHITE
@@ -1040,29 +1112,128 @@ def choose_vibe(vibe):
     for button in buttons_container.winfo_children():
         button.destroy()
 
-    waiting_card = tk.Frame(
-        buttons_container,
-        bg=SURFACE,
-        padx=45,
-        pady=25
+    # Translate the phrase shown in the GUI
+    # into the category stored in Supabase.
+    database_vibe = VIBE_MAP.get(
+        vibe,
+        vibe.lower()
     )
 
-    waiting_card.grid(
-        row=0,
-        column=0,
-        columnspan=2,
-        pady=10
-    )
+    try:
+        songs = get_songs_by_vibe(database_vibe)
+    except Exception as error:
+        print("Supabase error:", error)
 
-    waiting_text = tk.Label(
-        waiting_card,
-        text="recommendations coming next.",
-        bg=SURFACE,
-        fg=CYAN,
-        font=BODY_FONT
-    )
+        error_label = tk.Label(
+            buttons_container,
+            text="couldn't reach the music library.",
+            bg=BG,
+            fg=MUTED,
+            font=BODY_FONT
+        )
 
-    waiting_text.pack()
+        error_label.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            pady=20
+        )
+
+        return
+
+    if not songs:
+
+        no_song_label = tk.Label(
+            buttons_container,
+            text=f'No songs found for "{vibe}" yet.',
+            bg=BG,
+            fg=MUTED,
+            font=BODY_FONT
+        )
+
+        no_song_label.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            pady=20
+        )
+
+        return
+
+    # Show every matching song returned by Supabase.
+    for index, song in enumerate(songs):
+
+        song_card = tk.Frame(
+            buttons_container,
+            bg=SURFACE,
+            padx=25,
+            pady=18
+        )
+
+        song_card.grid(
+            row=index,
+            column=0,
+            columnspan=2,
+            pady=8,
+            padx=10,
+            sticky="ew"
+        )
+
+        title_label = tk.Label(
+            song_card,
+            text=song.get(
+                "title",
+                "Unknown song"
+            ),
+            bg=SURFACE,
+            fg=WHITE,
+            font=(TITLE_FACE, 20, "bold")
+        )
+
+        title_label.pack()
+
+        artist_label = tk.Label(
+            song_card,
+            text=song.get(
+                "artist",
+                "Unknown artist"
+            ),
+            bg=SURFACE,
+            fg=MUTED,
+            font=BODY_FONT
+        )
+
+        artist_label.pack(
+            pady=(4, 10)
+        )
+
+        spotify_url = song.get(
+            "spotify_url"
+        )
+
+        if spotify_url:
+
+            spotify_button = tk.Button(
+                song_card,
+                text="▶  Play on Spotify",
+                font=BUTTON_FONT,
+                bg=PURPLE,
+                fg=WHITE,
+                activebackground=PURPLE_LIGHT,
+                activeforeground=BG,
+                relief="flat",
+                bd=0,
+                cursor="hand2",
+                padx=20,
+                pady=9,
+                command=lambda url=spotify_url: open_spotify(url)
+            )
+
+            spotify_button.pack()
+
+    vibe_footer.config(
+        text=f"{len(songs)} song(s) found • more coming soon"
+    )
 
 
 # ============================================================
@@ -1153,3 +1324,4 @@ window.protocol(
 show_only(home_frame)
 
 window.mainloop()
+
