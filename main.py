@@ -3,7 +3,9 @@ import random
 import cv2
 import os
 import webbrowser
+import requests
 
+from io import BytesIO
 from PIL import Image, ImageTk
 from deepface import DeepFace
 from dotenv import load_dotenv
@@ -27,6 +29,7 @@ PINK = "#FF4FA3"
 CYAN = "#35D6FF"
 ORANGE = "#FFB84D"
 MINT = "#55E6B5"
+
 
 # Fonts are chosen from common Windows fonts.
 AVAILABLE_FONTS = set()
@@ -112,6 +115,9 @@ def open_spotify(url):
 camera = None
 camera_running = False
 
+# Keeps album cover images alive inside Tkinter
+cover_photo_refs = []
+
 
 # ============================================================
 # MAIN WINDOW
@@ -146,8 +152,6 @@ canvas.pack(fill="both", expand=True)
 # BACKGROUND DECOR
 # ============================================================
 
-# Very soft colour haze.
-# These are deliberately NOT giant circles.
 canvas.create_oval(
     -180, -220, 250, 180,
     fill="#17133A",
@@ -193,7 +197,11 @@ for _ in range(120):
     x = random.randint(0, 1700)
     y = random.randint(0, 1000)
 
-    size = random.choice([1, 1, 1, 2, 2, 3])
+    size = random.choice([
+        1, 1, 1,
+        2, 2,
+        3
+    ])
 
     particle = canvas.create_oval(
         x,
@@ -216,16 +224,27 @@ for _ in range(120):
 
 def animate_background():
 
-    width = max(window.winfo_width(), 1000)
-    height = max(window.winfo_height(), 700)
+    width = max(
+        window.winfo_width(),
+        1000
+    )
+
+    height = max(
+        window.winfo_height(),
+        700
+    )
 
     for p in particles:
 
         p["y"] += p["speed"]
 
         if p["y"] > height + 10:
+
             p["y"] = -10
-            p["x"] = random.randint(0, width)
+            p["x"] = random.randint(
+                0,
+                width
+            )
 
         p["twinkle"] += 0.035
 
@@ -237,7 +256,10 @@ def animate_background():
             p["y"] + p["size"]
         )
 
-    window.after(45, animate_background)
+    window.after(
+        45,
+        animate_background
+    )
 
 
 animate_background()
@@ -269,7 +291,10 @@ def center_content(event=None):
     )
 
 
-window.bind("<Configure>", center_content)
+window.bind(
+    "<Configure>",
+    center_content
+)
 
 
 # ============================================================
@@ -449,6 +474,7 @@ rotate_home_message()
 # ============================================================
 
 def button_enter(event):
+
     event.widget.configure(
         bg=PURPLE_LIGHT,
         fg=BG
@@ -456,6 +482,7 @@ def button_enter(event):
 
 
 def button_leave(event):
+
     event.widget.configure(
         bg=PURPLE,
         fg=WHITE
@@ -493,26 +520,47 @@ def primary_button(parent, text, command):
     return button
 
 
-start_button = primary_button(
-    home_frame,
-    "read my face  →",
-    lambda: open_camera()
-)
+# ============================================================
+# OPEN CAMERA
+# ============================================================
 
-start_button.pack()
+def open_camera():
 
+    global camera
+    global camera_running
 
-home_note = tk.Label(
-    home_frame,
-    text="no questionnaire. no personality test. just music.",
-    bg=BG,
-    fg=MUTED,
-    font=SMALL_FONT
-)
+    show_only(camera_frame)
 
-home_note.pack(
-    pady=(16, 0)
-)
+    camera_title.config(
+        text="give me your best\n'yeah i'm fine' face."
+    )
+
+    camera_hint.config(
+        text="SPACE to capture   •   Q to go back"
+    )
+
+    camera = cv2.VideoCapture(
+        0,
+        cv2.CAP_DSHOW
+    )
+
+    if not camera.isOpened():
+
+        camera_title.config(
+            text="the camera said no."
+        )
+
+        camera_hint.config(
+            text="check camera permissions and try again."
+        )
+
+        return
+
+    camera_running = True
+
+    window.focus_force()
+
+    update_camera()
 
 
 # ============================================================
@@ -559,8 +607,6 @@ camera_hint.pack(
 )
 
 
-# Camera container
-
 camera_card = tk.Frame(
     camera_frame,
     bg=SURFACE_2,
@@ -590,49 +636,6 @@ camera_tip = tk.Label(
 camera_tip.pack(
     pady=14
 )
-
-
-# ============================================================
-# OPEN CAMERA
-# ============================================================
-
-def open_camera():
-
-    global camera
-    global camera_running
-
-    show_only(camera_frame)
-
-    camera_title.config(
-        text="give me your best\n'yeah i'm fine' face."
-    )
-
-    camera_hint.config(
-        text="SPACE to capture   •   Q to go back"
-    )
-
-    camera = cv2.VideoCapture(
-        0,
-        cv2.CAP_DSHOW
-    )
-
-    if not camera.isOpened():
-
-        camera_title.config(
-            text="the camera said no."
-        )
-
-        camera_hint.config(
-            text="check camera permissions and try again."
-        )
-
-        return
-
-    camera_running = True
-
-    window.focus_force()
-
-    update_camera()
 
 
 # ============================================================
@@ -700,7 +703,6 @@ def capture_photo():
 
     if success:
 
-        # KEEPING YOUR EXISTING DEEPFACE INPUT
         cv2.imwrite(
             "captured_face.jpg",
             frame
@@ -752,6 +754,32 @@ def cancel_camera():
     )
 
     show_only(home_frame)
+
+
+# ============================================================
+# CAMERA START BUTTON
+# ============================================================
+
+start_button = primary_button(
+    home_frame,
+    "read my face  →",
+    lambda: open_camera()
+)
+
+start_button.pack()
+
+
+home_note = tk.Label(
+    home_frame,
+    text="no questionnaire. no personality test. just music.",
+    bg=BG,
+    fg=MUTED,
+    font=SMALL_FONT
+)
+
+home_note.pack(
+    pady=(16, 0)
+)
 
 
 # ============================================================
@@ -817,7 +845,10 @@ buttons_container = tk.Frame(
     bg=BG
 )
 
-buttons_container.pack()
+buttons_container.pack(
+    fill="both",
+    expand=True
+)
 
 
 vibe_footer = tk.Label(
@@ -829,7 +860,7 @@ vibe_footer = tk.Label(
 )
 
 vibe_footer.pack(
-    pady=(22, 0)
+    pady=(12, 0)
 )
 
 
@@ -936,8 +967,6 @@ vibe_options = {
 # ============================================================
 # VIBE MAP
 # ============================================================
-# The user sees the phrases above.
-# This converts each phrase into the category stored in Supabase.
 
 VIBE_MAP = {
 
@@ -992,7 +1021,10 @@ button_colours = [
 def choose_vibe_button(parent, text, index):
 
     normal_colour = button_colours[
-        min(index, len(button_colours) - 1)
+        min(
+            index,
+            len(button_colours) - 1
+        )
     ]
 
     button = tk.Button(
@@ -1012,12 +1044,14 @@ def choose_vibe_button(parent, text, index):
     )
 
     def enter(event):
+
         event.widget.configure(
             bg=PURPLE,
             fg=WHITE
         )
 
     def leave(event):
+
         event.widget.configure(
             bg=normal_colour,
             fg=WHITE
@@ -1059,8 +1093,8 @@ def show_vibe_options(emotion):
         text="so... what are we doing about it?"
     )
 
-    for button in buttons_container.winfo_children():
-        button.destroy()
+    for widget in buttons_container.winfo_children():
+        widget.destroy()
 
     options = vibe_options.get(
         emotion,
@@ -1094,6 +1128,8 @@ def show_vibe_options(emotion):
 
 def choose_vibe(vibe):
 
+    global cover_photo_refs
+
     emotion_label.config(
         text="LOCKED IN."
     )
@@ -1109,20 +1145,28 @@ def choose_vibe(vibe):
         text="your soundtrack is loading."
     )
 
-    for button in buttons_container.winfo_children():
-        button.destroy()
+    for widget in buttons_container.winfo_children():
+        widget.destroy()
 
-    # Translate the phrase shown in the GUI
-    # into the category stored in Supabase.
+    cover_photo_refs.clear()
+
     database_vibe = VIBE_MAP.get(
         vibe,
         vibe.lower()
     )
 
     try:
-        songs = get_songs_by_vibe(database_vibe)
+
+        songs = get_songs_by_vibe(
+            database_vibe
+        )
+
     except Exception as error:
-        print("Supabase error:", error)
+
+        print(
+            "Supabase error:",
+            error
+        )
 
         error_label = tk.Label(
             buttons_container,
@@ -1132,10 +1176,7 @@ def choose_vibe(vibe):
             font=BODY_FONT
         )
 
-        error_label.grid(
-            row=0,
-            column=0,
-            columnspan=2,
+        error_label.pack(
             pady=20
         )
 
@@ -1151,61 +1192,236 @@ def choose_vibe(vibe):
             font=BODY_FONT
         )
 
-        no_song_label.grid(
-            row=0,
-            column=0,
-            columnspan=2,
+        no_song_label.pack(
             pady=20
         )
 
         return
 
-    # Show every matching song returned by Supabase.
-    for index, song in enumerate(songs):
+    # ========================================================
+    # SCROLLABLE SONG AREA
+    # ========================================================
 
-        song_card = tk.Frame(
-            buttons_container,
-            bg=SURFACE,
-            padx=25,
-            pady=18
+    scroll_area = tk.Frame(
+        buttons_container,
+        bg=BG
+    )
+
+    scroll_area.pack(
+        fill="both",
+        expand=True,
+        padx=10
+    )
+
+    song_canvas = tk.Canvas(
+        scroll_area,
+        bg=BG,
+        highlightthickness=0
+    )
+
+    song_scrollbar = tk.Scrollbar(
+        scroll_area,
+        orient="vertical",
+        command=song_canvas.yview
+    )
+
+    song_frame = tk.Frame(
+        song_canvas,
+        bg=BG
+    )
+
+    song_frame_window = song_canvas.create_window(
+        (0, 0),
+        window=song_frame,
+        anchor="nw"
+    )
+
+    song_canvas.configure(
+        yscrollcommand=song_scrollbar.set
+    )
+
+    song_scrollbar.pack(
+        side="right",
+        fill="y"
+    )
+
+    song_canvas.pack(
+        side="left",
+        fill="both",
+        expand=True
+    )
+
+    def update_scroll_region(event=None):
+
+        song_canvas.configure(
+            scrollregion=song_canvas.bbox("all")
         )
 
-        song_card.grid(
-            row=index,
-            column=0,
-            columnspan=2,
-            pady=8,
-            padx=10,
-            sticky="ew"
+    song_frame.bind(
+        "<Configure>",
+        update_scroll_region
+    )
+
+    def resize_song_frame(event):
+
+        song_canvas.itemconfig(
+            song_frame_window,
+            width=event.width
+        )
+
+    song_canvas.bind(
+        "<Configure>",
+        resize_song_frame
+    )
+
+    # Mouse-wheel scrolling
+    def mouse_wheel(event):
+
+        song_canvas.yview_scroll(
+            int(-1 * (event.delta / 120)),
+            "units"
+        )
+
+    song_canvas.bind(
+        "<Enter>",
+        lambda event: song_canvas.bind_all(
+            "<MouseWheel>",
+            mouse_wheel
+        )
+    )
+
+    song_canvas.bind(
+        "<Leave>",
+        lambda event: song_canvas.unbind_all(
+            "<MouseWheel>"
+        )
+    )
+
+    # ========================================================
+    # SONG CARDS
+    # ========================================================
+
+    for song in songs:
+
+        song_card = tk.Frame(
+            song_frame,
+            bg=SURFACE,
+            padx=15,
+            pady=15
+        )
+
+        song_card.pack(
+            fill="x",
+            pady=7,
+            padx=5
+        )
+
+        # ----------------------------------------------------
+        # Album cover
+        # ----------------------------------------------------
+
+        cover_url = song.get(
+            "cover_url"
+        )
+
+        if cover_url:
+
+            try:
+
+                response = requests.get(
+                    cover_url,
+                    timeout=10
+                )
+
+                response.raise_for_status()
+
+                image = Image.open(
+                    BytesIO(response.content)
+                )
+
+                image = image.resize(
+                    (90, 90),
+                    Image.Resampling.LANCZOS
+                )
+
+                cover_image = ImageTk.PhotoImage(
+                    image
+                )
+
+                cover_photo_refs.append(
+                    cover_image
+                )
+
+                cover_label = tk.Label(
+                    song_card,
+                    image=cover_image,
+                    bg=SURFACE
+                )
+
+                cover_label.pack(
+                    side="left",
+                    padx=(0, 18)
+                )
+
+            except Exception as error:
+
+                print(
+                    f"Cover image error for "
+                    f"{song.get('title')}:",
+                    error
+                )
+
+        # ----------------------------------------------------
+        # Song information
+        # ----------------------------------------------------
+
+        info_frame = tk.Frame(
+            song_card,
+            bg=SURFACE
+        )
+
+        info_frame.pack(
+            side="left",
+            fill="both",
+            expand=True
         )
 
         title_label = tk.Label(
-            song_card,
+            info_frame,
             text=song.get(
                 "title",
                 "Unknown song"
             ),
             bg=SURFACE,
             fg=WHITE,
-            font=(TITLE_FACE, 20, "bold")
+            font=(TITLE_FACE, 18, "bold"),
+            anchor="w"
         )
 
-        title_label.pack()
+        title_label.pack(
+            anchor="w"
+        )
 
         artist_label = tk.Label(
-            song_card,
+            info_frame,
             text=song.get(
                 "artist",
                 "Unknown artist"
             ),
             bg=SURFACE,
             fg=MUTED,
-            font=BODY_FONT
+            font=BODY_FONT,
+            anchor="w"
         )
 
         artist_label.pack(
-            pady=(4, 10)
+            anchor="w",
+            pady=(3, 8)
         )
+
+        # ----------------------------------------------------
+        # Spotify button
+        # ----------------------------------------------------
 
         spotify_url = song.get(
             "spotify_url"
@@ -1214,7 +1430,7 @@ def choose_vibe(vibe):
         if spotify_url:
 
             spotify_button = tk.Button(
-                song_card,
+                info_frame,
                 text="▶  Play on Spotify",
                 font=BUTTON_FONT,
                 bg=PURPLE,
@@ -1224,15 +1440,18 @@ def choose_vibe(vibe):
                 relief="flat",
                 bd=0,
                 cursor="hand2",
-                padx=20,
-                pady=9,
-                command=lambda url=spotify_url: open_spotify(url)
+                padx=18,
+                pady=7,
+                command=lambda url=spotify_url:
+                    open_spotify(url)
             )
 
-            spotify_button.pack()
+            spotify_button.pack(
+                anchor="w"
+            )
 
     vibe_footer.config(
-        text=f"{len(songs)} song(s) found • more coming soon"
+        text=f"{len(songs)} song(s) found • scroll to explore"
     )
 
 
@@ -1306,6 +1525,7 @@ def close_app():
     camera_running = False
 
     if camera is not None:
+
         camera.release()
 
     window.destroy()

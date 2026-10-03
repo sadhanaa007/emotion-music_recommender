@@ -1,7 +1,13 @@
 import os
 import requests
+
 from dotenv import load_dotenv
 from supabase import create_client
+
+
+# ============================================================
+# LOAD ENVIRONMENT VARIABLES
+# ============================================================
 
 load_dotenv()
 
@@ -11,25 +17,56 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# ============================================================
+# CONNECT TO SUPABASE
+# ============================================================
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
+
+
+# ============================================================
+# GET SPOTIFY ACCESS TOKEN
+# ============================================================
 
 def get_spotify_token():
+
+    print("Getting Spotify access token...")
+
     response = requests.post(
         "https://accounts.spotify.com/api/token",
-        data={"grant_type": "client_credentials"},
-        auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+        data={
+            "grant_type": "client_credentials"
+        },
+        auth=(
+            SPOTIFY_CLIENT_ID,
+            SPOTIFY_CLIENT_SECRET
+        )
     )
 
     response.raise_for_status()
-    return response.json()["access_token"]
+
+    token = response.json()["access_token"]
+
+    print("Spotify connected!")
+
+    return token
 
 
-def find_spotify_info(title, artist, token):
+# ============================================================
+# SEARCH SPOTIFY
+# ============================================================
+
+def search_spotify(title, artist, token):
+
     headers = {
         "Authorization": f"Bearer {token}"
     }
 
+    # Search using both title and artist.
     query = f'track:"{title}" artist:"{artist}"'
 
     response = requests.get(
@@ -38,82 +75,252 @@ def find_spotify_info(title, artist, token):
         params={
             "q": query,
             "type": "track",
-            "limit": 1
+            "limit": 5,
+            "market": "IN"
         }
     )
 
     response.raise_for_status()
 
-    tracks = response.json()["tracks"]["items"]
+    tracks = response.json().get(
+        "tracks",
+        {}
+    ).get(
+        "items",
+        []
+    )
 
     if not tracks:
-        return None, None
 
+        # Fallback search if the strict search fails.
+        fallback_query = f"{title} {artist}"
+
+        response = requests.get(
+            "https://api.spotify.com/v1/search",
+            headers=headers,
+            params={
+                "q": fallback_query,
+                "type": "track",
+                "limit": 5,
+                "market": "IN"
+            }
+        )
+
+        response.raise_for_status()
+
+        tracks = response.json().get(
+            "tracks",
+            {}
+        ).get(
+            "items",
+            []
+        )
+
+    if not tracks:
+        return None
+
+    # Use the first result.
     track = tracks[0]
 
-    spotify_url = track["external_urls"]["spotify"]
+    spotify_url = (
+        track
+        .get("external_urls", {})
+        .get("spotify")
+    )
 
     cover_url = None
 
-    if track.get("album") and track["album"].get("images"):
-        cover_url = track["album"]["images"][0]["url"]
+    album = track.get(
+        "album",
+        {}
+    )
 
-    return spotify_url, cover_url
+    images = album.get(
+        "images",
+        []
+    )
+
+    if images:
+        cover_url = images[0].get("url")
+
+    return {
+        "spotify_url": spotify_url,
+        "cover_url": cover_url
+    }
 
 
-print("Getting Spotify access token...")
+# ============================================================
+# MAIN
+# ============================================================
 
-token = get_spotify_token()
+def main():
 
-print("Spotify connected!")
+    token = get_spotify_token()
 
-songs = (
+    # Get all songs.
+    response = (
+        supabase
+        .table("songs")
+        .select("*")
+        .execute()
+    )
+
+    songs = response.data
+
+    print(
+        f"Total songs: {len(songs)}"
+    )
+
+    print("=" * 60)
+
+    updated_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    for song in songs:
+
+        song_id = song.get("id")
+        title = song.get("title")
+        artist = song.get("artist")
+
+        print()
+        print(
+            f"Searching: {title} — {artist}"
+        )
+
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # Don't overwrite URLs that you already entered manually.
+        # ----------------------------------------------------
+
+        current_spotify_url = song.get(
+            "spotify_url"
+        )
+
+        current_cover_url = song.get(
+            "cover_url"
+        )
+
+        try:
+
+            result = search_spotify(
+                title,
+                artist,
+                token
+            )
+
+            if not result:
+
+                print("NOT FOUND")
+                failed_count += 1
+                continue
+
+            update_data = {}
+
+            # Only fill missing Spotify URL.
+            if (
+                not current_spotify_url
+                and result.get("spotify_url")
+            ):
+
+                update_data["spotify_url"] = (
+                    result["spotify_url"]
+                )
+
+                print(
+                    "FOUND Spotify URL"
+                )
+
+            else:
+
+                print(
+                    "Spotify URL already exists — keeping it"
+                )
+
+            # Only fill missing cover.
+            if (
+                not current_cover_url
+                and result.get("cover_url")
+            ):
+
+                update_data["cover_url"] = (
+                    result["cover_url"]
+                )
+
+                print(
+                    "FOUND Cover URL"
+                )
+
+            else:
+
+                print(
+                    "Cover URL already exists — keeping it"
+                )
+
+            # ------------------------------------------------
+            # THIS IS THE IMPORTANT PART
+            # ACTUALLY UPDATE SUPABASE
+            # ------------------------------------------------
+
+            if update_data:
+
+                update_response = (
     supabase
     .table("songs")
-    .select("id,title,artist,spotify_url,cover_url")
+    .update(update_data)
+    .eq("id", song_id)
+    .select()
     .execute()
 )
 
-print(f"Total songs: {len(songs.data)}")
+                # Verify that Supabase returned the updated row.
+                if update_response.data:
 
-for song in songs.data:
+                    print(
+                        "✓ SAVED TO SUPABASE"
+                    )
 
-    title = song["title"]
-    artist = song["artist"]
+                    updated_count += 1
 
-    # Only process songs that are missing either URL
-    # or cover art.
-    if song.get("spotify_url") and song.get("cover_url"):
-        continue
+                else:
 
-    print(f"\nSearching: {title} — {artist}")
+                    print(
+                        "⚠ Update sent, but no updated row returned"
+                    )
 
-    try:
-        spotify_url, cover_url = find_spotify_info(
-            title,
-            artist,
-            token
-        )
+            else:
 
-        if spotify_url:
+                skipped_count += 1
 
-            update_data = {
-                "spotify_url": spotify_url,
-                "cover_url": cover_url
-            }
+        except Exception as error:
 
-            supabase.table("songs").update(
-                update_data
-            ).eq("id", song["id"]).execute()
+            print(
+                f"ERROR: {error}"
+            )
 
-            print("FOUND Spotify URL")
-            print("FOUND Cover URL")
+            failed_count += 1
 
-        else:
-            print("NOT FOUND")
+    print()
+    print("=" * 60)
+    print("FINISHED")
+    print("=" * 60)
 
-    except Exception as e:
-        print("ERROR:", e)
+    print(
+        f"Updated: {updated_count}"
+    )
+
+    print(
+        f"Skipped: {skipped_count}"
+    )
+
+    print(
+        f"Failed/Not found: {failed_count}"
+    )
 
 
-print("\nFinished!")
+# ============================================================
+# RUN
+# ============================================================
+
+if __name__ == "__main__":
+    main()
