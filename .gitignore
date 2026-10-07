@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 captured_face.jpg
 .env
+.cover_cache/
+.cover_cache_bratz/
+.cover_cache_main_inspo/
