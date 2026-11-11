@@ -73,3 +73,11 @@ python main_2000s.py
 - User profiles and listening history.
 - Improved music recommendations.
 - Web and mobile application support.
+
+<img width="1915" height="1138" alt="ui" src="https://github.com/user-attachments/assets/02173f50-0a06-43d2-8532-48cfa6f019d3" />
+<img width="1917" height="1135" alt="photbooth" src="https://github.com/user-attachments/assets/3f039070-8dd3-4f5d-87a5-7b1d37e65370" />
+<img width="1917" height="1133" alt="vibe" src="https://github.com/user-attachments/assets/59875ff1-a7ed-4caa-b403-1840f44a771b" />
+<img width="1917" height="1130" alt="song page" src="https://github.com/user-attachments/assets/5821baa6-0443-480c-8313-cf93f703cc84" />
+<img width="1917" height="1082" alt="spotify" src="https://github.com/user-attachments/assets/1b8bafb9-3bfb-4ea4-a483-896984ae2e84" />
+
+
