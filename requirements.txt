@@ -1,0 +1,6 @@
+opencv-python
+deepface
+supabase
+Pillow
+python-dotenv
+requests
